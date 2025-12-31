@@ -15,15 +15,22 @@ Store information:
 Answer clearly, politely, and concisely.
 `;
 
+type ChatRole = "system" | "user" | "assistant";
+
+type ChatMessage = {
+  role: ChatRole;
+  content: string;
+};
+
 export async function generateReply(
-  history: { sender: string; text: string }[],
+  history: { sender: "user" | "assistant"; text: string }[],
   userMessage: string
 ): Promise<string> {
   try {
-    const messages = [
+    const messages: ChatMessage[] = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...history.map(m => ({
-        role: m.sender === "user" ? "user" : "assistant",
+      ...history.map((m): ChatMessage => ({
+        role: m.sender,
         content: m.text
       })),
       { role: "user", content: userMessage }
@@ -37,11 +44,12 @@ export async function generateReply(
     });
 
     return (
-      completion.choices[0].message.content ??
+      completion.choices[0]?.message?.content ??
       "Sorry, I couldn’t generate a response."
     );
   } catch (error) {
     console.error("LLM error:", error);
-    throw new Error("AI service failed");
+    return "Sorry, I am having trouble responding right now.";
   }
 }
+
