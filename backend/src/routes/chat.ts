@@ -1,53 +1,38 @@
-import { Router } from "express";
-import { z } from "zod";
-import {
-  createConversation,
-  saveMessage,
-  getConversationHistory
-} from "../services/conversationService";
+import { Router, Request, Response } from "express";
 import { generateReply } from "../services/llmService";
 
 const router = Router();
 
-const requestSchema = z.object({
-  message: z.string().min(1, "Message cannot be empty").max(1000),
-  sessionId: z.string().optional()
-});
+type ChatMessage = {
+  sender: "user" | "assistant";
+  text: string;
+};
 
-router.post("/message", async (req, res) => {
+router.post("/chat", async (req: Request, res: Response) => {
   try {
-    const parsed = requestSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid input" });
+    const { history, message } = req.body;
+
+    // Validate and safely cast history
+    const safeHistory: ChatMessage[] = Array.isArray(history)
+      ? history.filter(
+          (m): m is ChatMessage =>
+            (m.sender === "user" || m.sender === "assistant") &&
+            typeof m.text === "string"
+        )
+      : [];
+
+    if (typeof message !== "string") {
+      return res.status(400).json({ error: "Invalid message" });
     }
 
-    const { message, sessionId } = parsed.data;
+    const reply = await generateReply(safeHistory, message);
 
-    const conversationId = sessionId || createConversation();
-
-    // Save user message
-    saveMessage(conversationId, "user", message);
-
-    // Get conversation history
-    const history = getConversationHistory(conversationId);
-
-    // Generate AI reply
-    const reply = await generateReply(history, message);
-
-    // Save AI reply
-    saveMessage(conversationId, "ai", reply);
-
-    res.json({
-      reply,
-      sessionId: conversationId
-    });
+    res.json({ reply });
   } catch (error) {
     console.error("Chat route error:", error);
-    res.status(500).json({
-      reply:
-        "Sorry, something went wrong on our side. Please try again later."
-    });
+    res.status(500).json({ error: "Chat failed" });
   }
 });
 
 export default router;
+
